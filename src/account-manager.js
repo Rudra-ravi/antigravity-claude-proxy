@@ -64,6 +64,12 @@ export class AccountManager {
             }
 
             console.log(`[AccountManager] Loaded ${this.#accounts.length} account(s) from config`);
+
+            // If config exists but has no accounts, fall back to Antigravity database
+            if (this.#accounts.length === 0) {
+                console.log('[AccountManager] No accounts in config. Falling back to Antigravity database');
+                await this.#loadDefaultAccount();
+            }
         } catch (error) {
             if (error.code === 'ENOENT') {
                 // No config file - use single account from Antigravity database
