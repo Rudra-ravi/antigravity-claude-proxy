@@ -77,12 +77,14 @@ export function convertAnthropicToGoogle(anthropicRequest) {
         }
     }
 
-    // Apply thinking recovery for Gemini thinking models when needed
-    // This handles corrupted tool loops where thinking blocks are stripped
-    // Claude models handle this differently and don't need this recovery
+    // Apply thinking recovery for thinking models when needed
+    // - Gemini: needs recovery for tool loops/interrupted tools (stripped thinking)
+    // - Claude: needs recovery ONLY when cross-model (incompatible Gemini signatures will be dropped)
     let processedMessages = messages;
-    if (isGeminiModel && isThinking && needsThinkingRecovery(messages)) {
-        logger.debug('[RequestConverter] Applying thinking recovery for Gemini');
+    const targetFamily = isClaudeModel ? 'claude' : isGeminiModel ? 'gemini' : null;
+
+    if (isThinking && targetFamily && needsThinkingRecovery(messages, targetFamily)) {
+        logger.debug(`[RequestConverter] Applying thinking recovery for ${targetFamily}`);
         processedMessages = closeToolLoopForThinking(messages);
     }
 
@@ -107,7 +109,7 @@ export function convertAnthropicToGoogle(anthropicRequest) {
         // This happens when all thinking blocks are filtered out (unsigned)
         if (parts.length === 0) {
             logger.warn('[RequestConverter] WARNING: Empty parts array after filtering, adding placeholder');
-            parts.push({ text: '' });
+            parts.push({ text: '.' });
         }
 
         const content = {

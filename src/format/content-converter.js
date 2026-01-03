@@ -4,7 +4,7 @@
  */
 
 import { MIN_SIGNATURE_LENGTH, GEMINI_SKIP_SIGNATURE } from '../constants.js';
-import { getCachedSignature } from './signature-cache.js';
+import { getCachedSignature, getCachedSignatureFamily } from './signature-cache.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -155,16 +155,31 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
             // Add any images from the tool result as separate parts
             parts.push(...imageParts);
         } else if (block.type === 'thinking') {
-            // Handle thinking blocks - only those with valid signatures
+            // Handle thinking blocks with signature compatibility check
             if (block.signature && block.signature.length >= MIN_SIGNATURE_LENGTH) {
-                // Convert to Gemini format with signature
+                const signatureFamily = getCachedSignatureFamily(block.signature);
+                const targetFamily = isClaudeModel ? 'claude' : isGeminiModel ? 'gemini' : null;
+
+                // Drop blocks with incompatible signatures for Gemini (cross-model switch)
+                if (isGeminiModel && signatureFamily && targetFamily && signatureFamily !== targetFamily) {
+                    logger.debug(`[ContentConverter] Dropping incompatible ${signatureFamily} thinking for ${targetFamily} model`);
+                    continue;
+                }
+
+                // Drop blocks with unknown signature origin for Gemini (cold cache - safe default)
+                if (isGeminiModel && !signatureFamily && targetFamily) {
+                    logger.debug(`[ContentConverter] Dropping thinking with unknown signature origin`);
+                    continue;
+                }
+
+                // Compatible - convert to Gemini format with signature
                 parts.push({
                     text: block.thinking,
                     thought: true,
                     thoughtSignature: block.signature
                 });
             }
-            // Unsigned thinking blocks are dropped upstream
+            // Unsigned thinking blocks are dropped (existing behavior)
         }
     }
 

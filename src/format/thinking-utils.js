@@ -386,16 +386,23 @@ export function analyzeConversationState(messages) {
 
 /**
  * Check if conversation needs thinking recovery.
- * Returns true when:
- * 1. We're in a tool loop but have no valid thinking blocks, OR
- * 2. We have an interrupted tool with no valid thinking blocks
+ *
+ * For Gemini: recovery needed when (tool loop OR interrupted tool) AND no valid thinking
+ * For Claude: recovery needed when no valid compatible thinking (cross-model detection)
  *
  * @param {Array<Object>} messages - Array of messages
+ * @param {string} targetFamily - Target model family ('claude' or 'gemini')
  * @returns {boolean} True if thinking recovery is needed
  */
-export function needsThinkingRecovery(messages) {
-    const state = analyzeConversationState(messages);
-    // Need recovery if (tool loop OR interrupted tool) AND no thinking
+export function needsThinkingRecovery(messages, targetFamily = null) {
+    const state = analyzeConversationState(messages, targetFamily);
+
+    if (targetFamily === 'claude') {
+        // Claude: only check if thinking is valid/compatible
+        return !state.turnHasThinking;
+    }
+
+    // Gemini (default): check tool loop/interrupted AND no thinking
     return (state.inToolLoop || state.interruptedTool) && !state.turnHasThinking;
 }
 
@@ -414,9 +421,9 @@ function stripAllThinkingBlocks(messages) {
         const filtered = content.filter(block => !isThinkingPart(block));
 
         if (msg.content) {
-            return { ...msg, content: filtered.length > 0 ? filtered : [{ type: 'text', text: '' }] };
+            return { ...msg, content: filtered.length > 0 ? filtered : [{ type: 'text', text: '.' }] };
         } else if (msg.parts) {
-            return { ...msg, parts: filtered.length > 0 ? filtered : [{ text: '' }] };
+            return { ...msg, parts: filtered.length > 0 ? filtered : [{ text: '.' }] };
         }
         return msg;
     });

@@ -6,8 +6,8 @@
  */
 
 import crypto from 'crypto';
-import { MIN_SIGNATURE_LENGTH } from '../constants.js';
-import { cacheSignature } from '../format/signature-cache.js';
+import { MIN_SIGNATURE_LENGTH, getModelFamily } from '../constants.js';
+import { cacheSignature, cacheThinkingSignature } from '../format/signature-cache.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -110,6 +110,9 @@ export async function* streamSSEResponse(response, originalModel) {
 
                         if (signature && signature.length >= MIN_SIGNATURE_LENGTH) {
                             currentThinkingSignature = signature;
+                            // Cache thinking signature with model family for cross-model compatibility
+                            const modelFamily = getModelFamily(originalModel);
+                            cacheThinkingSignature(signature, modelFamily);
                         }
 
                         yield {
