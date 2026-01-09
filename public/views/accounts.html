@@ -50,6 +50,8 @@
                     <th class="pl-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-16" x-text="$store.global.t('enabled')">Enabled</th>
                     <th class="py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider flex-1 min-w-[200px]" x-text="$store.global.t('accountEmail')">Account (Email)</th>
                     <th class="py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20" x-text="$store.global.t('source')">Source</th>
+                    <th class="py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-16">Tier</th>
+                    <th class="py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">Quota</th>
                     <th class="py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24" x-text="$store.global.t('health')">Health</th>
                     <th class="py-3 pr-6 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32" x-text="$store.global.t('operations')">Operations</th>
                 </tr>
@@ -111,6 +113,38 @@
                                   :class="acc.source === 'oauth' ? 'bg-neon-purple/10 text-neon-purple border border-neon-purple/30' : 'bg-gray-500/10 text-gray-400 border border-gray-500/30'"
                                   x-text="acc.source || 'oauth'">
                             </span>
+                        </td>
+                        <td class="py-4">
+                            <span class="px-2 py-1 text-[10px] font-mono font-bold uppercase rounded"
+                                  :class="{
+                                      'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30': acc.subscription?.tier === 'ultra',
+                                      'bg-blue-500/10 text-blue-400 border border-blue-500/30': acc.subscription?.tier === 'pro',
+                                      'bg-gray-500/10 text-gray-400 border border-gray-500/30': !acc.subscription || acc.subscription.tier === 'free' || acc.subscription.tier === 'unknown'
+                                  }"
+                                  x-text="(acc.subscription?.tier || 'free').toUpperCase()">
+                            </span>
+                        </td>
+                        <td class="py-4">
+                            <div x-data="{ quota: getMainModelQuota(acc) }">
+                                <template x-if="quota.percent !== null">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-16 bg-gray-700 rounded-full h-2 overflow-hidden">
+                                            <div class="h-full rounded-full transition-all"
+                                                 :class="{
+                                                     'bg-neon-green': quota.percent > 50,
+                                                     'bg-yellow-500': quota.percent > 20 && quota.percent <= 50,
+                                                     'bg-red-500': quota.percent <= 20
+                                                 }"
+                                                 :style="`width: ${quota.percent}%`">
+                                            </div>
+                                        </div>
+                                        <span class="text-xs font-mono text-gray-400" x-text="quota.percent + '%'"></span>
+                                    </div>
+                                </template>
+                                <template x-if="quota.percent === null">
+                                    <span class="text-xs text-gray-600">-</span>
+                                </template>
+                            </div>
                         </td>
                         <td class="py-4">
                             <div class="flex items-center gap-2">

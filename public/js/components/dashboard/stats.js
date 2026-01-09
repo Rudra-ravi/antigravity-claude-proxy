@@ -40,4 +40,18 @@ window.DashboardStats.updateStats = function(component) {
     component.stats.total = enabledAccounts.length;
     component.stats.active = active;
     component.stats.limited = limited;
+
+    // Calculate subscription tier distribution
+    const subscription = { ultra: 0, pro: 0, free: 0 };
+    enabledAccounts.forEach(acc => {
+        const tier = acc.subscription?.tier || 'free';
+        if (tier === 'ultra') {
+            subscription.ultra++;
+        } else if (tier === 'pro') {
+            subscription.pro++;
+        } else {
+            subscription.free++;
+        }
+    });
+    component.stats.subscription = subscription;
 };

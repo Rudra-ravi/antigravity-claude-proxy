@@ -31,7 +31,10 @@ export async function loadAccounts(configPath = ACCOUNT_CONFIG_PATH) {
             // Reset invalid flag on startup - give accounts a fresh chance to refresh
             isInvalid: false,
             invalidReason: null,
-            modelRateLimits: acc.modelRateLimits || {}
+            modelRateLimits: acc.modelRateLimits || {},
+            // New fields for subscription and quota tracking
+            subscription: acc.subscription || { tier: 'unknown', projectId: null, detectedAt: null },
+            quota: acc.quota || { models: {}, lastChecked: null }
         }));
 
         const settings = config.settings || {};
@@ -117,7 +120,10 @@ export async function saveAccounts(configPath, accounts, settings, activeIndex) 
                 isInvalid: acc.isInvalid || false,
                 invalidReason: acc.invalidReason || null,
                 modelRateLimits: acc.modelRateLimits || {},
-                lastUsed: acc.lastUsed
+                lastUsed: acc.lastUsed,
+                // Persist subscription and quota data
+                subscription: acc.subscription || { tier: 'unknown', projectId: null, detectedAt: null },
+                quota: acc.quota || { models: {}, lastChecked: null }
             })),
             settings: settings,
             activeIndex: activeIndex

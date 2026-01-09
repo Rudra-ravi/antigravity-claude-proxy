@@ -39,6 +39,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         refreshTimer: null,
+        isTabVisible: true,
 
         fetchData() {
             Alpine.store('data').fetchData();
@@ -46,9 +47,39 @@ document.addEventListener('alpine:init', () => {
 
         startAutoRefresh() {
             if (this.refreshTimer) clearInterval(this.refreshTimer);
-            const interval = parseInt(Alpine.store('settings').refreshInterval);
-            if (interval > 0) {
-                this.refreshTimer = setInterval(() => Alpine.store('data').fetchData(), interval * 1000);
+            const baseInterval = parseInt(Alpine.store('settings').refreshInterval);
+            if (baseInterval > 0) {
+                // Setup visibility change listener (only once)
+                if (!this._visibilitySetup) {
+                    this._visibilitySetup = true;
+                    document.addEventListener('visibilitychange', () => {
+                        this.isTabVisible = !document.hidden;
+                        if (this.isTabVisible) {
+                            // Tab became visible - fetch immediately and restart timer
+                            Alpine.store('data').fetchData();
+                            this.startAutoRefresh();
+                        }
+                    });
+                }
+
+                // Schedule next refresh with jitter
+                const scheduleNext = () => {
+                    // Add ±20% random jitter to prevent synchronized requests
+                    const jitter = (Math.random() - 0.5) * 0.4; // -0.2 to +0.2
+                    const interval = baseInterval * (1 + jitter);
+
+                    // Slow down when tab is hidden (reduce frequency by 3x)
+                    const actualInterval = this.isTabVisible
+                        ? interval
+                        : interval * 3;
+
+                    this.refreshTimer = setTimeout(() => {
+                        Alpine.store('data').fetchData();
+                        scheduleNext(); // Reschedule with new jitter
+                    }, actualInterval * 1000);
+                };
+
+                scheduleNext();
             }
         },
 

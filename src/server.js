@@ -8,7 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { sendMessage, sendMessageStream, listModels, getModelQuotas } from './cloudcode/index.js';
+import { sendMessage, sendMessageStream, listModels, getModelQuotas, getSubscriptionTier } from './cloudcode/index.js';
 import { mountWebUI } from './webui/index.js';
 import { config } from './config.js';
 
@@ -266,11 +266,33 @@ app.get('/account-limits', async (req, res) => {
 
                 try {
                     const token = await accountManager.getTokenForAccount(account);
-                    const quotas = await getModelQuotas(token);
+
+                    // Fetch both quotas and subscription tier in parallel
+                    const [quotas, subscription] = await Promise.all([
+                        getModelQuotas(token),
+                        getSubscriptionTier(token)
+                    ]);
+
+                    // Update account object with fresh data
+                    account.subscription = {
+                        tier: subscription.tier,
+                        projectId: subscription.projectId,
+                        detectedAt: Date.now()
+                    };
+                    account.quota = {
+                        models: quotas,
+                        lastChecked: Date.now()
+                    };
+
+                    // Save updated account data to disk (async, don't wait)
+                    accountManager.saveToDisk().catch(err => {
+                        logger.error('[Server] Failed to save account data:', err);
+                    });
 
                     return {
                         email: account.email,
                         status: 'ok',
+                        subscription: account.subscription,
                         models: quotas
                     };
                 } catch (error) {
@@ -278,6 +300,7 @@ app.get('/account-limits', async (req, res) => {
                         email: account.email,
                         status: 'error',
                         error: error.message,
+                        subscription: account.subscription || { tier: 'unknown', projectId: null },
                         models: {}
                     };
                 }
@@ -451,6 +474,8 @@ app.get('/account-limits', async (req, res) => {
                     invalidReason: metadata.invalidReason || null,
                     lastUsed: metadata.lastUsed || null,
                     modelRateLimits: metadata.modelRateLimits || {},
+                    // Subscription data (new)
+                    subscription: acc.subscription || metadata.subscription || { tier: 'unknown', projectId: null },
                     // Quota limits
                     limits: Object.fromEntries(
                         sortedModels.map(modelId => {

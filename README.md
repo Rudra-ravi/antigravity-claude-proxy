@@ -280,10 +280,10 @@ When you add multiple accounts, the proxy automatically:
 - **Invalid account detection**: Accounts needing re-authentication are marked and skipped
 - **Prompt caching support**: Stable session IDs enable cache hits across conversation turns
 
-Check account status anytime:
+Check account status, subscription tiers, and quota anytime:
 
 ```bash
-# Web UI: http://localhost:8080/ (Accounts tab)
+# Web UI: http://localhost:8080/ (Accounts tab - shows tier badges and quota progress)
 # CLI Table:
 curl "http://localhost:8080/account-limits?format=table"
 ```
@@ -313,9 +313,9 @@ The proxy includes a built-in, modern web interface for real-time monitoring and
 
 ### Key Features
 
-- **Real-time Dashboard**: Monitor request volume, active accounts, and model health.
-- **Visual Model Quota**: Track per-model usage and next reset times.
-- **Account Management**: Add/remove Google accounts via OAuth without using the CLI.
+- **Real-time Dashboard**: Monitor request volume, active accounts, model health, and subscription tier distribution.
+- **Visual Model Quota**: Track per-model usage and next reset times with color-coded progress indicators.
+- **Account Management**: Add/remove Google accounts via OAuth, view subscription tiers (Free/Pro/Ultra) and quota status at a glance.
 - **Claude CLI Configuration**: Edit your `~/.claude/settings.json` directly from the browser.
 - **Live Logs**: Stream server logs with level-based filtering and search.
 - **Advanced Tuning**: Configure retries, timeouts, and debug mode on the fly.

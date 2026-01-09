@@ -163,5 +163,40 @@ window.Components.accountManager = () => ({
         } catch (e) {
             store.showToast(store.t('reloadFailed') + ': ' + e.message, 'error');
         }
+    },
+
+    /**
+     * Get main model quota for display
+     * Prioritizes flagship models (Opus > Sonnet > Flash)
+     * @param {Object} account - Account object with limits
+     * @returns {Object} { percent: number|null, model: string }
+     */
+    getMainModelQuota(account) {
+        const limits = account.limits || {};
+        const modelIds = Object.keys(limits);
+
+        if (modelIds.length === 0) {
+            return { percent: null, model: '-' };
+        }
+
+        // Priority: opus > sonnet > flash > others
+        const priorityModels = [
+            modelIds.find(m => m.toLowerCase().includes('opus')),
+            modelIds.find(m => m.toLowerCase().includes('sonnet')),
+            modelIds.find(m => m.toLowerCase().includes('flash')),
+            modelIds[0] // Fallback to first model
+        ];
+
+        const selectedModel = priorityModels.find(m => m) || modelIds[0];
+        const quota = limits[selectedModel];
+
+        if (!quota || quota.remainingFraction === null) {
+            return { percent: null, model: selectedModel };
+        }
+
+        return {
+            percent: Math.round(quota.remainingFraction * 100),
+            model: selectedModel
+        };
     }
 });
