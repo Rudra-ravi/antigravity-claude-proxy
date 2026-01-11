@@ -382,7 +382,7 @@
 }
 
 .filter-control-item {
-    @apply w-full px-3 py-1.5 text-left text-[10px] font-mono hover:bg-white/5 transition-colors;
+    @apply block w-full px-3 py-1.5 text-left text-[10px] font-mono hover:bg-white/5 transition-colors;
 }
 
 /* Action Buttons */
