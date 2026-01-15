@@ -9,7 +9,55 @@
  * - Phase 2c: Flatten type arrays + update required for nullable
  * - Phase 3: Remove unsupported keywords
  * - Phase 4: Final cleanup (required array validation)
+ *
+ * Performance optimizations:
+ * - LRU cache for sanitized schemas (tool schemas are repeated every request)
+ * - Fast hash generation for cache keys
  */
+
+// LRU Cache for sanitized schemas (tool schemas repeat in every request)
+const SCHEMA_CACHE_MAX_SIZE = 100;
+const schemaCache = new Map();
+
+/**
+ * Generate a fast hash for schema caching
+ * Uses JSON.stringify which is highly optimized in V8
+ * @param {Object} schema - Schema to hash
+ * @returns {string} Hash string
+ */
+function hashSchema(schema) {
+    return JSON.stringify(schema);
+}
+
+/**
+ * Get or compute a cached schema transformation
+ * @param {Object} schema - Input schema
+ * @param {Function} transform - Transform function
+ * @param {string} cacheKey - Cache key prefix
+ * @returns {Object} Transformed schema
+ */
+function getCachedOrCompute(schema, transform, cacheKey) {
+    const fullKey = cacheKey + hashSchema(schema);
+
+    if (schemaCache.has(fullKey)) {
+        // Move to end for LRU behavior
+        const cached = schemaCache.get(fullKey);
+        schemaCache.delete(fullKey);
+        schemaCache.set(fullKey, cached);
+        return cached;
+    }
+
+    const result = transform(schema);
+
+    // LRU eviction
+    if (schemaCache.size >= SCHEMA_CACHE_MAX_SIZE) {
+        const firstKey = schemaCache.keys().next().value;
+        schemaCache.delete(firstKey);
+    }
+
+    schemaCache.set(fullKey, result);
+    return result;
+}
 
 /**
  * Append a hint to a schema's description field.
@@ -588,6 +636,7 @@ function toGoogleType(type) {
 /**
  * Cleans JSON schema for Gemini API compatibility.
  * Uses a multi-phase pipeline matching opencode-antigravity-auth approach.
+ * Results are cached for performance (tool schemas repeat every request).
  *
  * @param {Object} schema - The JSON schema to clean
  * @returns {Object} Cleaned schema safe for Gemini API
@@ -596,6 +645,16 @@ export function cleanSchema(schema) {
     if (!schema || typeof schema !== 'object') return schema;
     if (Array.isArray(schema)) return schema.map(cleanSchema);
 
+    // Use cached result if available (tool schemas repeat in every request)
+    return getCachedOrCompute(schema, cleanSchemaInternal, 'clean:');
+}
+
+/**
+ * Internal schema cleaning implementation (called by cache wrapper)
+ * @param {Object} schema - The JSON schema to clean
+ * @returns {Object} Cleaned schema
+ */
+function cleanSchemaInternal(schema) {
     // Phase 1: Convert $refs to hints
     let result = convertRefsToHints(schema);
 

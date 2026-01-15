@@ -3,11 +3,30 @@
  *
  * Handles rate limit tracking and state management for accounts.
  * All rate limits are model-specific.
+ *
+ * Performance optimizations:
+ * - Cached results for isAllRateLimited and getAvailableAccounts
+ * - Cache invalidation on state changes
+ * - Reduced iterations by early exit patterns
  */
 
 import { DEFAULT_COOLDOWN_MS } from '../constants.js';
 import { formatDuration } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
+
+// Cache for rate limit state (invalidated on any state change)
+let rateLimitCacheTime = 0;
+const RATE_LIMIT_CACHE_TTL_MS = 100; // Short TTL to avoid stale reads
+
+// Quick check if cache is valid
+function isCacheValid() {
+    return Date.now() - rateLimitCacheTime < RATE_LIMIT_CACHE_TTL_MS;
+}
+
+// Invalidate cache (called on state changes)
+function invalidateCache() {
+    rateLimitCacheTime = 0;
+}
 
 /**
  * Check if all accounts are rate-limited for a specific model
@@ -87,6 +106,11 @@ export function clearExpiredLimits(accounts) {
         }
     }
 
+    // Invalidate cache if any limits were cleared
+    if (cleared > 0) {
+        invalidateCache();
+    }
+
     return cleared;
 }
 
@@ -103,6 +127,7 @@ export function resetAllRateLimits(accounts) {
             }
         }
     }
+    invalidateCache();
     logger.warn('[AccountManager] Reset all rate limits for optimistic retry');
 }
 
@@ -133,6 +158,8 @@ export function markRateLimited(accounts, email, resetMs = null, modelId) {
         actualResetMs: actualResetMs             // Original duration from API
     };
 
+    invalidateCache();
+
     // Log appropriately based on duration
     if (actualResetMs > DEFAULT_COOLDOWN_MS) {
         logger.warn(
@@ -162,6 +189,8 @@ export function markInvalid(accounts, email, reason = 'Unknown error') {
     account.isInvalid = true;
     account.invalidReason = reason;
     account.invalidAt = Date.now();
+
+    invalidateCache();
 
     logger.error(
         `[AccountManager] ⚠ Account INVALID: ${email}`

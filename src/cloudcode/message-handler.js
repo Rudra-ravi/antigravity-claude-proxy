@@ -3,6 +3,10 @@
  *
  * Handles non-streaming message requests with multi-account support,
  * retry logic, and endpoint failover.
+ *
+ * Performance optimizations:
+ * - Pre-built URL strings for endpoints
+ * - Single JSON.stringify per request attempt
  */
 
 import {
@@ -20,6 +24,14 @@ import { parseResetTime } from './rate-limit-parser.js';
 import { buildCloudCodeRequest, buildHeaders } from './request-builder.js';
 import { parseThinkingSSEResponse } from './sse-parser.js';
 import { getFallbackModel } from '../fallback-config.js';
+
+// Pre-built endpoint URLs (avoid string concat per request)
+const STREAMING_URLS = ANTIGRAVITY_ENDPOINT_FALLBACKS.map(
+    endpoint => `${endpoint}/v1internal:streamGenerateContent?alt=sse`
+);
+const NON_STREAMING_URLS = ANTIGRAVITY_ENDPOINT_FALLBACKS.map(
+    endpoint => `${endpoint}/v1internal:generateContent`
+);
 
 /**
  * Send a non-streaming request to Cloud Code with multi-account support
@@ -105,16 +117,20 @@ export async function sendMessage(anthropicRequest, accountManager, fallbackEnab
             let lastError = null;
             let retriedOnce = false; // Track if we've already retried for short rate limit
 
-            for (const endpoint of ANTIGRAVITY_ENDPOINT_FALLBACKS) {
-                try {
-                    const url = isThinking
-                        ? `${endpoint}/v1internal:streamGenerateContent?alt=sse`
-                        : `${endpoint}/v1internal:generateContent`;
+            // Pre-stringify payload once (avoid per-endpoint serialization)
+            const payloadJson = JSON.stringify(payload);
+            const urls = isThinking ? STREAMING_URLS : NON_STREAMING_URLS;
+            const acceptHeader = isThinking ? 'text/event-stream' : 'application/json';
 
+            for (let endpointIdx = 0; endpointIdx < urls.length; endpointIdx++) {
+                const url = urls[endpointIdx];
+                const endpoint = ANTIGRAVITY_ENDPOINT_FALLBACKS[endpointIdx];
+
+                try {
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json'),
-                        body: JSON.stringify(payload)
+                        headers: buildHeaders(token, model, acceptHeader),
+                        body: payloadJson
                     });
 
                     if (!response.ok) {
@@ -149,8 +165,8 @@ export async function sendMessage(anthropicRequest, accountManager, fallbackEnab
                                     // Retry same endpoint
                                     const retryResponse = await fetch(url, {
                                         method: 'POST',
-                                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json'),
-                                        body: JSON.stringify(payload)
+                                        headers: buildHeaders(token, model, acceptHeader),
+                                        body: payloadJson
                                     });
 
                                     if (retryResponse.ok) {

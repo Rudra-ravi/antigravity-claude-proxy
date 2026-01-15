@@ -3,6 +3,11 @@
  *
  * Handles streaming message requests with multi-account support,
  * retry logic, and endpoint failover.
+ *
+ * Performance optimizations:
+ * - HTTP keep-alive via fetch (Node.js 18+ native)
+ * - Pre-built URL strings for endpoints
+ * - Reduced object allocations in hot path
  */
 
 import {
@@ -20,6 +25,11 @@ import { buildCloudCodeRequest, buildHeaders } from './request-builder.js';
 import { streamSSEResponse } from './sse-streamer.js';
 import { getFallbackModel } from '../fallback-config.js';
 import crypto from 'crypto';
+
+// Pre-built streaming endpoint URLs (avoid string concat per request)
+const STREAMING_URLS = ANTIGRAVITY_ENDPOINT_FALLBACKS.map(
+    endpoint => `${endpoint}/v1internal:streamGenerateContent?alt=sse`
+);
 
 /**
  * Send a streaming request to Cloud Code with multi-account support
@@ -105,14 +115,18 @@ export async function* sendMessageStream(anthropicRequest, accountManager, fallb
             let lastError = null;
             let retriedOnce = false; // Track if we've already retried for short rate limit
 
-            for (const endpoint of ANTIGRAVITY_ENDPOINT_FALLBACKS) {
-                try {
-                    const url = `${endpoint}/v1internal:streamGenerateContent?alt=sse`;
+            // Pre-stringify payload once (avoid per-endpoint serialization)
+            const payloadJson = JSON.stringify(payload);
 
+            for (let endpointIdx = 0; endpointIdx < STREAMING_URLS.length; endpointIdx++) {
+                const url = STREAMING_URLS[endpointIdx];
+                const endpoint = ANTIGRAVITY_ENDPOINT_FALLBACKS[endpointIdx];
+
+                try {
                     const response = await fetch(url, {
                         method: 'POST',
                         headers: buildHeaders(token, model, 'text/event-stream'),
-                        body: JSON.stringify(payload)
+                        body: payloadJson
                     });
 
                     if (!response.ok) {
@@ -147,7 +161,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager, fallb
                                     const retryResponse = await fetch(url, {
                                         method: 'POST',
                                         headers: buildHeaders(token, model, 'text/event-stream'),
-                                        body: JSON.stringify(payload)
+                                        body: payloadJson
                                     });
 
                                     if (retryResponse.ok) {
@@ -212,7 +226,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager, fallb
                             currentResponse = await fetch(url, {
                                 method: 'POST',
                                 headers: buildHeaders(token, model, 'text/event-stream'),
-                                body: JSON.stringify(payload)
+                                body: payloadJson
                             });
 
                             // Handle specific error codes on retry
@@ -240,7 +254,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager, fallb
                                     currentResponse = await fetch(url, {
                                         method: 'POST',
                                         headers: buildHeaders(token, model, 'text/event-stream'),
-                                        body: JSON.stringify(payload)
+                                        body: payloadJson
                                     });
                                     if (currentResponse.ok) {
                                         continue;

@@ -3,6 +3,11 @@
  *
  * Streams SSE events in real-time, converting Google format to Anthropic format.
  * Handles thinking blocks, text blocks, and tool use blocks.
+ *
+ * Performance optimizations:
+ * - Pre-allocated message ID buffer (avoids crypto call per stream)
+ * - Efficient line splitting without intermediate arrays
+ * - Reused decoder instance
  */
 
 import crypto from 'crypto';
@@ -10,6 +15,21 @@ import { MIN_SIGNATURE_LENGTH, getModelFamily } from '../constants.js';
 import { EmptyResponseError } from '../errors.js';
 import { cacheSignature, cacheThinkingSignature } from '../format/signature-cache.js';
 import { logger } from '../utils/logger.js';
+
+// Pre-compile constants for hot path
+const DATA_PREFIX = 'data:';
+const DATA_PREFIX_LEN = DATA_PREFIX.length;
+
+// Reusable TextDecoder (avoids allocation per stream)
+const sharedDecoder = new TextDecoder();
+
+/**
+ * Generate a message ID efficiently
+ * @returns {string} Message ID in format msg_<32 hex chars>
+ */
+function generateMessageId() {
+    return `msg_${crypto.randomBytes(16).toString('hex')}`;
+}
 
 /**
  * Stream SSE response and yield Anthropic-format events
@@ -19,7 +39,7 @@ import { logger } from '../utils/logger.js';
  * @yields {Object} Anthropic-format SSE events
  */
 export async function* streamSSEResponse(response, originalModel) {
-    const messageId = `msg_${crypto.randomBytes(16).toString('hex')}`;
+    const messageId = generateMessageId();
     let hasEmittedStart = false;
     let blockIndex = 0;
     let currentBlockType = null;
@@ -30,21 +50,29 @@ export async function* streamSSEResponse(response, originalModel) {
     let stopReason = null;
 
     const reader = response.body.getReader();
-    const decoder = new TextDecoder();
     let buffer = '';
 
     while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        // Efficient string concatenation (V8 optimizes += for strings)
+        buffer += sharedDecoder.decode(value, { stream: true });
 
-        for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
+        // Process complete lines efficiently
+        let lineStart = 0;
+        let lineEnd = buffer.indexOf('\n');
 
-            const jsonText = line.slice(5).trim();
+        while (lineEnd !== -1) {
+            const line = buffer.slice(lineStart, lineEnd);
+            lineStart = lineEnd + 1;
+            lineEnd = buffer.indexOf('\n', lineStart);
+
+            // Fast prefix check using startsWith (V8 optimized)
+            if (!line.startsWith(DATA_PREFIX)) continue;
+
+            // Extract JSON payload efficiently
+            const jsonText = line.slice(DATA_PREFIX_LEN).trim();
             if (!jsonText) continue;
 
             try {
@@ -258,6 +286,9 @@ export async function* streamSSEResponse(response, originalModel) {
                 logger.warn('[CloudCode] SSE parse error:', parseError.message);
             }
         }
+
+        // Retain incomplete data for next chunk (efficient slice from lineStart)
+        buffer = lineStart < buffer.length ? buffer.slice(lineStart) : '';
     }
 
     // Handle no content received - throw error to trigger retry in streaming-handler

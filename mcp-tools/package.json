@@ -1,0 +1,27 @@
+{
+  "name": "antigravity-mcp-tools",
+  "version": "1.0.0",
+  "description": "MCP tools for Antigravity Claude Proxy - Image generation and Web search",
+  "type": "module",
+  "bin": {
+    "antigravity-image-mcp": "./image-server.js",
+    "antigravity-search-mcp": "./search-server.js"
+  },
+  "scripts": {
+    "start:image": "node image-server.js",
+    "start:search": "node search-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "antigravity",
+    "claude",
+    "gemini",
+    "image-generation",
+    "web-search"
+  ],
+  "author": "Antigravity Community",
+  "license": "MIT"
+}
